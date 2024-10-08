@@ -1,21 +1,43 @@
 import React, { useState, useEffect } from "react";
 import { getBookmarksFromHTML } from "./parser";
 import { Bookmark } from "./types";
-import {
-  semanticSearch,
-  initializeEmbeddings,
-  debouncedSemanticSearch,
-} from "./semanticSearch";
+import { semanticSearch, initializeEmbeddings } from "./semanticSearch";
 
-// SearchBar component
-function SearchBar({ onSearch }: { onSearch: (query: string) => void }) {
+// Updated SearchBar component
+function SearchBar({
+  onSearch,
+  onClear,
+}: {
+  onSearch: (query: string) => void;
+  onClear: () => void;
+}) {
+  const [inputValue, setInputValue] = useState("");
+
+  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      onSearch(inputValue);
+    }
+  };
+
+  const handleClear = () => {
+    setInputValue("");
+    onClear();
+  };
+
   return (
-    <input
-      type="text"
-      placeholder="Search bookmarks..."
-      onChange={(e) => onSearch(e.target.value)}
-      className="search-bar"
-    />
+    <div className="search-container">
+      <input
+        type="text"
+        placeholder="Search bookmarks..."
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyPress={handleKeyPress}
+        className="search-bar"
+      />
+      <button onClick={handleClear} className="clear-button">
+        Clear
+      </button>
+    </div>
   );
 }
 
@@ -40,6 +62,7 @@ function BookmarkList({ bookmarks }: { bookmarks: Bookmark[] }) {
     </ul>
   );
 }
+
 function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [searchResults, setSearchResults] = useState<Bookmark[]>([]);
@@ -74,8 +97,14 @@ function App() {
       return;
     }
 
-    const results = await debouncedSemanticSearch(query, bookmarks);
+    setIsLoading(true);
+    const results = await semanticSearch(query, bookmarks);
     setSearchResults(results);
+    setIsLoading(false);
+  };
+
+  const handleClear = () => {
+    setSearchResults([]);
   };
 
   if (isLoading) {
@@ -85,9 +114,9 @@ function App() {
   return (
     <div className="App">
       <h1>Bookmark Search</h1>
-      <SearchBar onSearch={handleSearch} />
+      <SearchBar onSearch={handleSearch} onClear={handleClear} />
       <BookmarkList
-        bookmarks={searchResults?.length > 0 ? searchResults : bookmarks}
+        bookmarks={searchResults.length > 0 ? searchResults : bookmarks}
       />
     </div>
   );

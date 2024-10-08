@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { debounce } from "lodash";
 import { Bookmark } from "./types";
 
 const openai = new OpenAI({
@@ -17,7 +16,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
       "getting more embeddings for " + uncachedTexts.length + " items"
     );
     const response = await openai.embeddings.create({
-      model: "text-embedding-3-small",
+      model: "text-embedding-3-large",
       input: uncachedTexts,
     });
 
@@ -54,7 +53,7 @@ export async function initializeEmbeddings(
 export async function semanticSearch(
   query: string,
   bookmarks: Bookmark[],
-  topK: number = 10
+  topK: number = 50
 ): Promise<Bookmark[]> {
   const [queryEmbedding, ...bookmarkEmbeddings] = await getEmbeddings([
     query,
@@ -90,7 +89,7 @@ export async function rerank(
     .join("\n")}\n\nProvide the ranking as a comma-separated list of numbers.`;
 
   const response = await openai.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
     prompt: prompt,
     max_tokens: 1000,
     temperature: 0.3,
@@ -99,5 +98,3 @@ export async function rerank(
   const ranking = response.choices[0].text.trim().split(",").map(Number);
   return ranking.map((i) => results[i - 1]);
 }
-
-export const debouncedSemanticSearch = debounce(semanticSearch, 1000);
