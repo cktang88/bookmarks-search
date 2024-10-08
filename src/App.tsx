@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import "./App.css";
-
+import React, { useState, useEffect } from "react";
 import { getBookmarksFromHTML } from "./parser";
-import { debouncedSemanticSearch, rerank } from "./semanticSearch";
 import { Bookmark } from "./types";
+import {
+  semanticSearch,
+  initializeEmbeddings,
+  debouncedSemanticSearch,
+} from "./semanticSearch";
 
 // SearchBar component
 function SearchBar({ onSearch }: { onSearch: (query: string) => void }) {
@@ -38,22 +40,32 @@ function BookmarkList({ bookmarks }: { bookmarks: Bookmark[] }) {
     </ul>
   );
 }
-
-// Main App component
 function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [searchResults, setSearchResults] = useState<Bookmark[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load bookmarks from HTML file
-    fetch("/bookmarks/bookmarks_9_24_24.html")
-      .then((response) => response.text())
-      .then((html) => {
+    async function loadBookmarks() {
+      try {
+        const response = await fetch("/bookmarks/bookmarks_9_24_24.html");
+        const html = await response.text();
         const parsedBookmarks = getBookmarksFromHTML(html);
         setBookmarks(parsedBookmarks);
-      })
-      .catch((error) => console.error("Error loading bookmarks:", error));
+
+        console.log("getting initial embeddings...");
+
+        // Initialize embeddings for all bookmarks
+        await initializeEmbeddings(parsedBookmarks);
+
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error loading bookmarks:", error);
+        setIsLoading(false);
+      }
+    }
+
+    loadBookmarks();
   }, []);
 
   const handleSearch = async (query: string) => {
@@ -62,34 +74,21 @@ function App() {
       return;
     }
 
-    setIsLoading(true);
-    try {
-      const semanticResults = await debouncedSemanticSearch(query, bookmarks);
-      console.log(semanticResults);
-      if (semanticResults) {
-        const rerankedResults = await rerank(query, semanticResults);
-        console.log(rerankedResults);
-        setSearchResults(rerankedResults);
-      }
-    } catch (error) {
-      console.error("Error during semantic search:", error);
-      setSearchResults([]);
-    } finally {
-      setIsLoading(false);
-    }
+    const results = await debouncedSemanticSearch(query, bookmarks);
+    setSearchResults(results);
   };
 
+  if (isLoading) {
+    return <div>Loading bookmarks...</div>;
+  }
+
   return (
-    <div className="app">
-      <h1>Bookmarks</h1>
+    <div className="App">
+      <h1>Bookmark Search</h1>
       <SearchBar onSearch={handleSearch} />
-      {isLoading ? (
-        <p>Searching...</p>
-      ) : (
-        <BookmarkList
-          bookmarks={searchResults.length > 0 ? searchResults : bookmarks}
-        />
-      )}
+      <BookmarkList
+        bookmarks={searchResults?.length > 0 ? searchResults : bookmarks}
+      />
     </div>
   );
 }

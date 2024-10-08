@@ -9,18 +9,46 @@ const openai = new OpenAI({
 
 const embeddingCache = new Map<string, number[]>();
 
-export async function getEmbedding(text: string): Promise<number[]> {
-  if (embeddingCache.has(text)) {
-    return embeddingCache.get(text)!;
+export async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  const uncachedTexts = texts.filter((text) => !embeddingCache.has(text));
+
+  if (uncachedTexts.length > 0) {
+    console.log(
+      "getting more embeddings for " + uncachedTexts.length + " items"
+    );
+    const response = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: uncachedTexts,
+    });
+
+    response.data.forEach((item, index) => {
+      embeddingCache.set(uncachedTexts[index], item.embedding);
+    });
   }
 
-  const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: text,
-  });
-  const embedding = response.data[0].embedding;
-  embeddingCache.set(text, embedding);
-  return embedding;
+  return texts.map((text) => embeddingCache.get(text)!);
+}
+
+function getKey(bookmark: Bookmark) {
+  return (
+    bookmark.title +
+    " " +
+    bookmark.url
+      .replaceAll("/", " ")
+      .replaceAll("https:", " ")
+      .replaceAll("-", " ")
+  );
+}
+
+export async function initializeEmbeddings(
+  bookmarks: Bookmark[]
+): Promise<void> {
+  const titles = bookmarks.map(getKey);
+  for (let i = 0; i < titles.length; i += 100) {
+    const chunk = titles.slice(i, i + 100);
+    console.log(chunk);
+    await getEmbeddings(chunk);
+  }
 }
 
 export async function semanticSearch(
@@ -28,17 +56,18 @@ export async function semanticSearch(
   bookmarks: Bookmark[],
   topK: number = 10
 ): Promise<Bookmark[]> {
-  const queryEmbedding = await getEmbedding(query);
-  console.log(queryEmbedding);
+  const [queryEmbedding, ...bookmarkEmbeddings] = await getEmbeddings([
+    query,
+    ...bookmarks.map(getKey),
+  ]);
 
-  const scoredBookmarks = await Promise.all(
-    bookmarks.map(async (bookmark) => {
-      const bookmarkEmbedding = await getEmbedding(bookmark.title);
-      console.log(bookmarkEmbedding);
-      const similarity = cosineSimilarity(queryEmbedding, bookmarkEmbedding);
-      return { ...bookmark, score: similarity };
-    })
-  );
+  const scoredBookmarks = bookmarks.map((bookmark, index) => {
+    const similarity = cosineSimilarity(
+      queryEmbedding,
+      bookmarkEmbeddings[index]
+    );
+    return { ...bookmark, score: similarity };
+  });
 
   scoredBookmarks.sort((a, b) => b.score - a.score);
   return scoredBookmarks.slice(0, topK);
@@ -55,8 +84,9 @@ export async function rerank(
   query: string,
   results: Bookmark[]
 ): Promise<Bookmark[]> {
+  console.log("doing reranking...");
   const prompt = `Query: "${query}"\n\nRank the following bookmarks based on their relevance to the query:\n\n${results
-    .map((b, i) => `${i + 1}. ${b.title}`)
+    .map((b, i) => `${i + 1}. ${getKey(b)}`)
     .join("\n")}\n\nProvide the ranking as a comma-separated list of numbers.`;
 
   const response = await openai.completions.create({
