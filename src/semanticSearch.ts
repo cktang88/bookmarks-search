@@ -72,11 +72,24 @@ export async function semanticSearch(
   return scoredBookmarks.slice(0, topK);
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  const dotProduct = a.reduce((sum, _, i) => sum + a[i] * b[i], 0);
-  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-  return dotProduct / (magnitudeA * magnitudeB);
+function dotProduct(vecA: number[], vecB: number[]) {
+  let product = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    product += vecA[i] * vecB[i];
+  }
+  return product;
+}
+
+function magnitude(vec: number[]) {
+  let sum = 0;
+  for (let i = 0; i < vec.length; i++) {
+    sum += vec[i] * vec[i];
+  }
+  return Math.sqrt(sum);
+}
+
+function cosineSimilarity(vecA: number[], vecB: number[]) {
+  return dotProduct(vecA, vecB) / (magnitude(vecA) * magnitude(vecB));
 }
 
 export async function rerank(
