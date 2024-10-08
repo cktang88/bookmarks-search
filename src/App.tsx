@@ -2,12 +2,8 @@ import { useState, useEffect } from "react";
 import "./App.css";
 
 import { getBookmarksFromHTML } from "./parser";
-
-// Bookmark type definition
-type Bookmark = {
-  title: string;
-  url: string;
-};
+import { debouncedSemanticSearch, rerank } from "./semanticSearch";
+import { Bookmark } from "./types";
 
 // SearchBar component
 function SearchBar({ onSearch }: { onSearch: (query: string) => void }) {
@@ -46,33 +42,54 @@ function BookmarkList({ bookmarks }: { bookmarks: Bookmark[] }) {
 // Main App component
 function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchResults, setSearchResults] = useState<Bookmark[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     // Load bookmarks from HTML file
     fetch("/bookmarks/bookmarks_9_24_24.html")
       .then((response) => response.text())
       .then((html) => {
-        console.log(html);
         const parsedBookmarks = getBookmarksFromHTML(html);
         setBookmarks(parsedBookmarks);
       })
       .catch((error) => console.error("Error loading bookmarks:", error));
   }, []);
 
-  const filteredBookmarks = bookmarks.filter((bookmark) =>
-    bookmark.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleSearch = async (query: string) => {
+    if (query.trim() === "") {
+      setSearchResults([]);
+      return;
+    }
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
+    setIsLoading(true);
+    try {
+      const semanticResults = await debouncedSemanticSearch(query, bookmarks);
+      console.log(semanticResults);
+      if (semanticResults) {
+        const rerankedResults = await rerank(query, semanticResults);
+        console.log(rerankedResults);
+        setSearchResults(rerankedResults);
+      }
+    } catch (error) {
+      console.error("Error during semantic search:", error);
+      setSearchResults([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="app">
       <h1>Bookmarks</h1>
       <SearchBar onSearch={handleSearch} />
-      <BookmarkList bookmarks={filteredBookmarks} />
+      {isLoading ? (
+        <p>Searching...</p>
+      ) : (
+        <BookmarkList
+          bookmarks={searchResults.length > 0 ? searchResults : bookmarks}
+        />
+      )}
     </div>
   );
 }
