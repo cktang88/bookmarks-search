@@ -1,6 +1,7 @@
 export type Bookmark = {
   title: string;
   url: string;
+  keywords?: string[];
 };
 
 /*

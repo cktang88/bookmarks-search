@@ -35,7 +35,7 @@ function SearchBar({
         className="search-bar"
       />
       <button onClick={handleClear} className="clear-button">
-        Clear
+        See All Bookmarks
       </button>
     </div>
   );
@@ -73,7 +73,7 @@ function App() {
       try {
         const response = await fetch("/bookmarks/bookmarks_9_24_24.html");
         const html = await response.text();
-        const parsedBookmarks = getBookmarksFromHTML(html);
+        const parsedBookmarks = getBookmarksFromHTML(html).slice(0, 100); // testing with N bookmarks
         setBookmarks(parsedBookmarks);
 
         console.log("getting initial embeddings...");

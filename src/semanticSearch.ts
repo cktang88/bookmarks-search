@@ -8,6 +8,67 @@ const openai = new OpenAI({
 
 const embeddingCache = new Map<string, number[]>();
 
+export async function enrichBookmarks(
+  bookmarks: Bookmark[]
+): Promise<Bookmark[]> {
+  const enrichedBookmarks: Bookmark[] = [];
+  const chunkSize = 100;
+
+  for (let i = 0; i < bookmarks.length; i += chunkSize) {
+    const chunk = bookmarks.slice(i, i + chunkSize);
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a helpful assistant that provides relevant keywords for bookmarks. Respond with a raw JSON array, with one entry per bookmark, where each entry is an object containing the index of the bookmark and its keywords.",
+          },
+          {
+            role: "user",
+            content: `Provide a comma-separated list of 7-8 relevant targeted SEO keywords or short phrases for each of the following browser bookmarks. Consider both the site domain and the bookmark title for each.
+
+${chunk
+  .map(
+    (bookmark, index) => `
+${i + index + 1}. Title: ${bookmark.title}
+   URL: ${bookmark.url}
+`
+  )
+  .join("\n")}
+`,
+          },
+        ],
+      });
+
+      const keywordsData = JSON.parse(
+        response.choices[0]?.message?.content || "[]"
+      );
+
+      keywordsData?.bookmarks?.forEach(
+        (item: { index: number; keywords: string[] }) => {
+          const bookmarkIndex = i + item.index - 1;
+          enrichedBookmarks[bookmarkIndex] = {
+            ...bookmarks[bookmarkIndex],
+            keywords: item.keywords,
+          };
+        }
+      );
+      console.log(enrichedBookmarks);
+    } catch (error) {
+      console.error("Error enriching bookmarks:", error);
+      // Add the original bookmarks without keywords if there's an error
+      chunk.forEach((bookmark, index) => {
+        enrichedBookmarks[i + index] = bookmark;
+      });
+    }
+  }
+
+  return enrichedBookmarks;
+}
+
 export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   const uncachedTexts = texts.filter((text) => !embeddingCache.has(text));
 
@@ -30,13 +91,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
 
 function getKeyFromBookmark(bookmark: Bookmark) {
   return (
-    bookmark.title +
-    " " +
-    bookmark.url
-      .replaceAll("/", " ")
-      .replaceAll("https:", " ")
-      .replaceAll("-", " ")
-      .replaceAll("www.", " ")
+    "Title: " + bookmark.title + ", Keywords: " + bookmark.keywords?.join(", ")
   );
 }
 
@@ -55,7 +110,9 @@ function getKeyFromHistoryItem(historyItem: HistoryItem) {
 export async function initializeEmbeddings(
   bookmarks: Bookmark[]
 ): Promise<void> {
-  const titles = bookmarks.map(getKeyFromBookmark);
+  const enrichedBookmarks = await enrichBookmarks(bookmarks);
+
+  const titles = enrichedBookmarks.map(getKeyFromBookmark);
   for (let i = 0; i < titles.length; i += 100) {
     const chunk = titles.slice(i, i + 100);
     console.log(chunk);
