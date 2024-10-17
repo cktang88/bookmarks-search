@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Bookmark } from "./types";
+import { Bookmark, HistoryItem } from "./types";
 
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
@@ -28,7 +28,7 @@ export async function getEmbeddings(texts: string[]): Promise<number[][]> {
   return texts.map((text) => embeddingCache.get(text)!);
 }
 
-function getKey(bookmark: Bookmark) {
+function getKeyFromBookmark(bookmark: Bookmark) {
   return (
     bookmark.title +
     " " +
@@ -36,13 +36,26 @@ function getKey(bookmark: Bookmark) {
       .replaceAll("/", " ")
       .replaceAll("https:", " ")
       .replaceAll("-", " ")
+      .replaceAll("www.", " ")
+  );
+}
+
+function getKeyFromHistoryItem(historyItem: HistoryItem) {
+  return (
+    historyItem.title +
+    " " +
+    historyItem.url
+      .replaceAll("/", " ")
+      .replaceAll("https:", " ")
+      .replaceAll("-", " ")
+      .replaceAll("www.", " ")
   );
 }
 
 export async function initializeEmbeddings(
   bookmarks: Bookmark[]
 ): Promise<void> {
-  const titles = bookmarks.map(getKey);
+  const titles = bookmarks.map(getKeyFromBookmark);
   for (let i = 0; i < titles.length; i += 100) {
     const chunk = titles.slice(i, i + 100);
     console.log(chunk);
@@ -57,7 +70,7 @@ export async function semanticSearch(
 ): Promise<Bookmark[]> {
   const [queryEmbedding, ...bookmarkEmbeddings] = await getEmbeddings([
     query,
-    ...bookmarks.map(getKey),
+    ...bookmarks.map(getKeyFromBookmark),
   ]);
 
   const scoredBookmarks = bookmarks.map((bookmark, index) => {
@@ -97,8 +110,8 @@ export async function rerank(
   results: Bookmark[]
 ): Promise<Bookmark[]> {
   console.log("doing reranking...");
-  const prompt = `Query: "${query}"\n\nRank the following bookmarks based on their relevance to the query:\n\n${results
-    .map((b, i) => `${i + 1}. ${getKey(b)}`)
+  const prompt = `Query: "${query}"\n\nRank the following browser bookmarks based on their relevance to the user's search query (most relevant first):\n\n${results
+    .map((b, i) => `${i + 1}. ${getKeyFromBookmark(b)}`)
     .join("\n")}\n\nProvide the ranking as a comma-separated list of numbers.`;
 
   const response = await openai.completions.create({
