@@ -28,3 +28,6 @@ history
 
 # Environment variables
 .env
+
+# Cache directories and files
+cache/
